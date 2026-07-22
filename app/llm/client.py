@@ -12,7 +12,9 @@ class LLMClient:
 
             model=settings.MODEL,
 
-            messages=messages
+            messages=messages,
+
+            temperature=0
 
         )
         return response.choices[0].message.content

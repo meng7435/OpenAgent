@@ -1,9 +1,9 @@
 import asyncio
-from app.agnet.agent import Agent
+from app.agent.agent import Agent
 
 async def main():
     agent = Agent()
-    result  = await agent.run('介绍下你自己')
+    result  = await agent.run('帮我查一下天气')
     print(result)
 
 asyncio.run(main())
