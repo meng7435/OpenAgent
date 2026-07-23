@@ -1,118 +1,90 @@
 from app.llm.client import LLMClient
-from app.agent.state import AgentState
-from app.agent.parser import parse_action
-
+from app.tools import create_tool_manager
+import json
 
 class Agent:
     def __init__(self):
         self.llm = LLMClient()
+        self.tool_manager = create_tool_manager()
 
-    async def think(self, state: AgentState):
-        result = await self.llm.chat(
+    async def run(
+            self,
+            message
+    ):
 
-            state.messages
-
-        )
-
-        state.messages.append(
+        messages = [
 
             {
+                "role": "system",
 
-                "role": "assistant",
-
-                "content": result
-
-            }
-
-        )
-
-        return result
-
-    async def run(self, user_message: str):
-        state = AgentState()
-        state.messages.append({
-            "role": "system",
-
-            "content":
-                """
-                你是一个AI Agent。
-
-                你需要决定下一步行动。
-
-                如果可以直接回答：
-
-                返回:
-
-                {
-                    "action":"finish",
-                    "input":"答案"
-                }
-
-
-                如果需要工具：
-
-                返回:
-
-                {
-                    "action":"tool名称",
-                    "input":"参数"
-                }
-
-                """
-
-        })
-        state.messages.append(
+                "content":
+                    "你是一个AI Agent"
+            },
 
             {
                 "role": "user",
 
-                "content": user_message
-
+                "content": message
             }
 
-        )
-        while not state.finished:
-            state.iteration += 1
-            print(
-                f"\n=== 第{state.iteration}轮思考 ==="
-            )
-            response = await self.think(
-                state
-            )
+        ]
 
-            print(
-                "LLM:",
-                response
-            )
-            action = parse_action(response)
-            print(
-                "Action:",
-                action
+        while True:
+
+            response = await self.llm.chat(
+
+                messages,
+
+                self.tool_manager.get_schemas()
+
             )
 
-            if action["action"] == "finish":
+            # 判断是否调用工具
 
-                state.finished = True
+            if response.tool_calls:
 
-                return action["input"]
+                for call in response.tool_calls:
+                    tool_name = call.function.name
+
+                    arguments = json.loads(
+
+                        call.function.arguments
+
+                    )
+                    print(tool_name)
+                    print(arguments)
+                    result = await self.tool_manager.execute(
+
+                        tool_name,
+
+                        arguments
+
+                    )
+                    print(result)
+                    messages.append(
+
+                        response
+
+                    )
+
+                    messages.append(
+
+                        {
+
+                            "role": "tool",
+
+                            "tool_call_id":
+                                call.id,
+
+                            "content":
+                                str(result)
+
+                        }
+
+                    )
+
+
 
             else:
 
-                # 暂时模拟工具
-                observation = (
-                    f"执行工具:"
-                    f"{action['action']}"
-                    f", 参数:"
-                    f"{action['input']}"
-                )
-                state.messages.append(
-
-                    {
-                        "role": "tool",
-
-                        "content": observation
-
-                    }
-
-                )
-            return "结束"
+                return response.content
