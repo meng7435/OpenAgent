@@ -1,34 +1,32 @@
 from app.llm.client import LLMClient
 from app.tools import create_tool_manager
 import json
+from app.memory.manager import MemoryManager
+
 
 class Agent:
     def __init__(self):
         self.llm = LLMClient()
         self.tool_manager = create_tool_manager()
+        self.memory = MemoryManager()
 
-    async def run(
-            self,
-            message
-    ):
-
+    async def run(self, message, session_id):
+        history = await self.memory.get_history(session_id)
         messages = [
-
             {
                 "role": "system",
-
                 "content":
                     "你是一个AI Agent"
-            },
+            }
+        ]
+        messages.extend(history)
 
+        messages.append(
             {
                 "role": "user",
-
                 "content": message
             }
-
-        ]
-
+        )
         while True:
 
             response = await self.llm.chat(
@@ -51,8 +49,6 @@ class Agent:
                         call.function.arguments
 
                     )
-                    print(tool_name)
-                    print(arguments)
                     result = await self.tool_manager.execute(
 
                         tool_name,
@@ -60,7 +56,6 @@ class Agent:
                         arguments
 
                     )
-                    print(result)
                     messages.append(
 
                         response
@@ -86,5 +81,30 @@ class Agent:
 
 
             else:
+                final_answer = response.content
 
-                return response.content
+                await self.memory.save_message(
+
+                    session_id,
+
+                    {
+                        "role": "user",
+
+                        "content": message
+                    }
+
+                )
+
+                await self.memory.save_message(
+
+                    session_id,
+
+                    {
+                        "role": "assistant",
+
+                        "content": final_answer
+                    }
+
+                )
+
+                return final_answer
