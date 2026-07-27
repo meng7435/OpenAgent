@@ -23,7 +23,7 @@ class MemoryManager:
             session_id
         )
 
-    async def save_user_memory(self, user_id, info):
+    async def save_user_memory(self, user_id, info:str):
         await self.long.add(
 
             user_id,
@@ -35,4 +35,12 @@ class MemoryManager:
     async def get_user_memory(self, user_id):
         return await self.long.get(
             user_id
+        )
+
+    async def recall_memory(
+            self,
+            query
+    ):
+        return await self.long.search(
+            query
         )

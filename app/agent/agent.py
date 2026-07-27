@@ -1,8 +1,11 @@
+import traceback
+from logging import setLogRecordFactory
+
 from app.llm.client import LLMClient
 from app.tools import create_tool_manager
 import json
 from app.memory.manager import MemoryManager
-
+from loguru import logger
 
 class Agent:
     def __init__(self):
@@ -11,100 +14,53 @@ class Agent:
         self.memory = MemoryManager()
 
     async def run(self, message, session_id):
+        # 加载历史记录
         history = await self.memory.get_history(session_id)
-        messages = [
-            {
-                "role": "system",
-                "content":
-                    "你是一个AI Agent"
-            }
-        ]
-        messages.extend(history)
+        memory = await self.memory.recall_memory(message)
+        logger.info(memory)
+        messages = [{"role": "system", "content": "你是一个AI Agent"}]
+        valid_history = []
+        for item in history:
+            if isinstance(item, dict):
+                valid_history.append(item)
+        messages.extend(valid_history)
 
-        messages.append(
-            {
-                "role": "user",
-                "content": message
-            }
-        )
+        user_input_msg = {"role": "user", "content": message}
+        messages.append(user_input_msg)
+
         while True:
-
-            response = await self.llm.chat(
-
-                messages,
-
-                self.tool_manager.get_schemas()
-
-            )
-
-            # 判断是否调用工具
-
+            response = await self.llm.chat(messages, self.tool_manager.get_schemas())
             if response.tool_calls:
+                assistant_call_msg = response.model_dump(mode="json")
+                messages.append(assistant_call_msg)
 
                 for call in response.tool_calls:
                     tool_name = call.function.name
+                    arguments = json.loads(call.function.arguments)
+                    result = await self.tool_manager.execute(tool_name, arguments)
+                    tool_msg = {
+                        "role": "tool",
+                        "tool_call_id": call.id,
+                        "content": str(result)
+                    }
+                    messages.append(tool_msg)
 
-                    arguments = json.loads(
-
-                        call.function.arguments
-
-                    )
-                    result = await self.tool_manager.execute(
-
-                        tool_name,
-
-                        arguments
-
-                    )
-                    messages.append(
-
-                        response
-
-                    )
-
-                    messages.append(
-
-                        {
-
-                            "role": "tool",
-
-                            "tool_call_id":
-                                call.id,
-
-                            "content":
-                                str(result)
-
-                        }
-
-                    )
-
-
+                continue
 
             else:
                 final_answer = response.content
+                assistant_final_msg = {"role": "assistant", "content": final_answer}
 
-                await self.memory.save_message(
+                try:
+                    await self.memory.save_message(session_id, user_input_msg)
+                    await self.memory.save_message(session_id, assistant_final_msg)
 
-                    session_id,
+                    await self.memory.save_user_memory(session_id, message)
+                    await self.memory.save_user_memory(session_id, final_answer)
 
-                    {
-                        "role": "user",
+                    logger.success("对话持久化完成：user + assistant")
+                except Exception as e:
+                     logger.error(f"保存对话记忆异常: {e}\n{traceback.format_exc()}")
 
-                        "content": message
-                    }
-
-                )
-
-                await self.memory.save_message(
-
-                    session_id,
-
-                    {
-                        "role": "assistant",
-
-                        "content": final_answer
-                    }
-
-                )
 
                 return final_answer

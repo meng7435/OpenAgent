@@ -9,9 +9,9 @@ class ShortMemory(BaseMemory):
         if key not in self.storage:
             self.storage[key] = []
 
-            self.storage[key].append(
-                value
-            )
+        self.storage[key].append(
+            value
+        )
 
     async def get(self, key):
         return self.storage.get(

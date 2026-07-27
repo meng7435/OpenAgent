@@ -25,7 +25,6 @@ class WeatherTool(BaseTool):
             "units": "metric",  # 使用摄氏度
             "lang": "zh_cn"  # 中文返回
         }
-        print(params)
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.get(self.BASE_URL, params=params)
