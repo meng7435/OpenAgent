@@ -2,6 +2,8 @@ import traceback
 from logging import setLogRecordFactory
 
 from app.llm.client import LLMClient
+from app.mcp.client import MCPClient
+from app.mcp import server
 from app.tools import create_tool_manager
 import json
 from app.memory.manager import MemoryManager
@@ -10,14 +12,12 @@ from loguru import logger
 class Agent:
     def __init__(self):
         self.llm = LLMClient()
-        self.tool_manager = create_tool_manager()
+        self.mcp = MCPClient(server)
         self.memory = MemoryManager()
 
     async def run(self, message, session_id):
         # 加载历史记录
         history = await self.memory.get_history(session_id)
-        memory = await self.memory.recall_memory(message)
-        logger.info(memory)
         messages = [{"role": "system", "content": "你是一个AI Agent"}]
         valid_history = []
         for item in history:
@@ -27,17 +27,17 @@ class Agent:
 
         user_input_msg = {"role": "user", "content": message}
         messages.append(user_input_msg)
-
+        tools = await self.mcp.get_tools()
         while True:
-            response = await self.llm.chat(messages, self.tool_manager.get_schemas())
+            response = await self.llm.chat(messages, tools)
             if response.tool_calls:
                 assistant_call_msg = response.model_dump(mode="json")
                 messages.append(assistant_call_msg)
 
                 for call in response.tool_calls:
                     tool_name = call.function.name
-                    arguments = json.loads(call.function.arguments)
-                    result = await self.tool_manager.execute(tool_name, arguments)
+                    city = json.loads(call.function.arguments)['city']
+                    result = await self.mcp.tool_run(tool_name, city)
                     tool_msg = {
                         "role": "tool",
                         "tool_call_id": call.id,
