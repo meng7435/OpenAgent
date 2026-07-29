@@ -16,7 +16,8 @@ class WeatherTool:
 
     BASE_URL = os.getenv("WEATHER_BASE_URL")
 
-    def parameters(self):
+    @staticmethod
+    def input_schema():
         return {
             "type": "object",
             "properties": {

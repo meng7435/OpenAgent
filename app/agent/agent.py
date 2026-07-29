@@ -8,11 +8,14 @@ from app.tools import create_tool_manager
 import json
 from app.memory.manager import MemoryManager
 from loguru import logger
-
+from app.skills import skill_manager
 class Agent:
     def __init__(self):
         self.llm = LLMClient()
+        # mcp
         self.mcp = MCPClient(server)
+        # skill
+        self.skill = skill_manager
         self.memory = MemoryManager()
 
     async def run(self, message, session_id):
@@ -27,7 +30,10 @@ class Agent:
 
         user_input_msg = {"role": "user", "content": message}
         messages.append(user_input_msg)
-        tools = await self.mcp.get_tools()
+        # skill获取
+        skill_tools = self.skill.get_schemas()
+        logger.info(skill_tools)
+        tools = skill_tools
         while True:
             response = await self.llm.chat(messages, tools)
             if response.tool_calls:
@@ -35,16 +41,31 @@ class Agent:
                 messages.append(assistant_call_msg)
 
                 for call in response.tool_calls:
-                    tool_name = call.function.name
-                    city = json.loads(call.function.arguments)['city']
-                    result = await self.mcp.tool_run(tool_name, city)
+                    name = call.function.name
+                    arguments = json.loads(call.function.arguments)
+                    logger.info(f"收到技能调用：{name}, 参数={arguments}")
+
+                    skill = self.skill.get(name)
+                    if not skill:
+                        err_info = f"错误：不存在技能【{name}】"
+                        logger.error(err_info)
+                        tool_msg = {
+                            "role": "tool",
+                            "tool_call_id": call.id,
+                            "content": err_info
+                        }
+                        messages.append(tool_msg)
+                        continue
+
+                    logger.info(f"开始执行Skill:{name}")
+                    result = await skill.execute(arguments)
+
                     tool_msg = {
                         "role": "tool",
                         "tool_call_id": call.id,
                         "content": str(result)
                     }
                     messages.append(tool_msg)
-
                 continue
 
             else:

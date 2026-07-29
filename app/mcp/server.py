@@ -13,7 +13,7 @@ class MCPServer:
                 "function": {
                     "name": tool.name,
                     "description": tool.description,
-                    "parameters": tool.parameters()
+                    "parameters": tool.input_schema()
                 }
             })
         return result
@@ -32,5 +32,5 @@ class MCPServer:
             }
 
         return await tool.execute(
-            arguments
+            **arguments
         )
