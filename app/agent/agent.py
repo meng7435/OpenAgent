@@ -1,14 +1,18 @@
 import traceback
 from logging import setLogRecordFactory
 
+from jupyter_client.session import session_flags
+
 from app.llm.client import LLMClient
 from app.mcp.client import MCPClient
 from app.mcp import server
-from app.tools import create_tool_manager
 import json
 from app.memory.manager import MemoryManager
 from loguru import logger
+from app.planner.planner import Planner
 from app.skills import skill_manager
+
+
 class Agent:
     def __init__(self):
         self.llm = LLMClient()
@@ -17,8 +21,12 @@ class Agent:
         # skill
         self.skill = skill_manager
         self.memory = MemoryManager()
+        self.planner = Planner(
+            self.llm
+        )
 
-    async def run(self, message, session_id):
+    async def run(self, user_msg, session_id):
+
         # 加载历史记录
         history = await self.memory.get_history(session_id)
         messages = [{"role": "system", "content": "你是一个AI Agent"}]
@@ -27,61 +35,104 @@ class Agent:
             if isinstance(item, dict):
                 valid_history.append(item)
         messages.extend(valid_history)
-
-        user_input_msg = {"role": "user", "content": message}
+        user_input_msg = {"role": "user", "content": user_msg}
         messages.append(user_input_msg)
+
         # skill获取
         skill_tools = self.skill.get_schemas()
-        logger.info(skill_tools)
-        tools = skill_tools
-        while True:
-            response = await self.llm.chat(messages, tools)
-            if response.tool_calls:
-                assistant_call_msg = response.model_dump(mode="json")
-                messages.append(assistant_call_msg)
+        plane = await self.planner.create_plan(messages, skill_tools)
+        results = []
+        for task in plane.tasks:
+            logger.info(task)
+            skill = self.skill.get(task.skill)
+            if skill:
+                result = await skill.execute(task.input)
+                results.append(
+                    {
 
-                for call in response.tool_calls:
-                    name = call.function.name
-                    arguments = json.loads(call.function.arguments)
-                    logger.info(f"收到技能调用：{name}, 参数={arguments}")
-
-                    skill = self.skill.get(name)
-                    if not skill:
-                        err_info = f"错误：不存在技能【{name}】"
-                        logger.error(err_info)
-                        tool_msg = {
-                            "role": "tool",
-                            "tool_call_id": call.id,
-                            "content": err_info
-                        }
-                        messages.append(tool_msg)
-                        continue
-
-                    logger.info(f"开始执行Skill:{name}")
-                    result = await skill.execute(arguments)
-
-                    tool_msg = {
-                        "role": "tool",
-                        "tool_call_id": call.id,
-                        "content": str(result)
+                        "skill":
+                            task.skill,
+                        "result":
+                            result
                     }
-                    messages.append(tool_msg)
-                continue
+                )
+        final_answer = await self.summary(
+            user_msg,
+            results
+        )
+        assistant_msg = {
+            "role": "assistant",
+            "content": final_answer
 
-            else:
-                final_answer = response.content
-                assistant_final_msg = {"role": "assistant", "content": final_answer}
+        }
+        try:
+            # 短期记忆保存
+            await self.memory.save_message(
+                session_id,
+                user_input_msg
+            )
+            await self.memory.save_message(
+                session_id,
+                assistant_msg
+            )
 
-                try:
-                    await self.memory.save_message(session_id, user_input_msg)
-                    await self.memory.save_message(session_id, assistant_final_msg)
-
-                    await self.memory.save_user_memory(session_id, message)
-                    await self.memory.save_user_memory(session_id, final_answer)
-
-                    logger.success("对话持久化完成：user + assistant")
-                except Exception as e:
-                     logger.error(f"保存对话记忆异常: {e}\n{traceback.format_exc()}")
+            # 长期记忆保存
+            await self.memory.save_user_memory( session_id,
+                user_msg)
+            await self.memory.save_user_memory( session_id,
+                final_answer)
+            logger.success(
+                "对话保存成功"
+            )
 
 
-                return final_answer
+        except Exception:
+
+            logger.error(
+                traceback.format_exc()
+            )
+
+        return final_answer
+
+    async def summary(
+            self,
+            question,
+            results
+    ):
+
+        response = await self.llm.chat(
+
+            [
+
+                {
+                    "role": "system",
+
+                    "content":
+                        """
+                        根据执行结果回答用户。
+                        不要提及内部Skill和工具。
+                        """
+                },
+
+                {
+                    "role": "user",
+
+                    "content":
+                        f"""
+    用户问题:
+
+    {question}
+
+
+    执行结果:
+
+    {results}
+
+    """
+                }
+
+            ]
+
+        )
+
+        return response.content

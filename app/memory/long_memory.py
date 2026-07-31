@@ -81,3 +81,4 @@ class LongMemory:
         )
 
         return result
+

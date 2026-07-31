@@ -32,10 +32,6 @@ class MemoryManager:
 
         )
 
-    async def get_user_memory(self, user_id):
-        return await self.long.get(
-            user_id
-        )
 
     async def recall_memory(
             self,

@@ -16,6 +16,4 @@ class SearchTool:
         }
 
     async def execute(self, city: str):
-        if city == "上海市":
-            return ["东方明珠", "外滩"]
-        return []
+        return ["东方明珠", "外滩"]
