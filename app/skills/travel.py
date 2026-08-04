@@ -40,7 +40,7 @@ class TravelSkill:
 
         search = await self.mcp.tool_run(
             "search",
-            {"city": city["city"] + "景点"}
+            {"city":f'{city}景点'}
         )
 
         return {

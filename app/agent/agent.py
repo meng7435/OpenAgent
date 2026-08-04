@@ -46,7 +46,7 @@ class Agent:
             logger.info(task)
             skill = self.skill.get(task.skill)
             if skill:
-                result = await skill.execute(task.input)
+                result = await skill.execute(task.input['city'])
                 results.append(
                     {
 

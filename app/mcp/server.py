@@ -32,5 +32,5 @@ class MCPServer:
             }
 
         return await tool.execute(
-            **arguments
+            arguments
         )
