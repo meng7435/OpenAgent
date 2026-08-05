@@ -2,7 +2,7 @@ from app.llm.client import LLMClient
 from app.skills import skill_manager
 from app.state.agent_state import AgentState
 
-from app.agent.action import AgentAction
+from app.agents.action import AgentAction
 import json
 from app.prompts.react import react_prompt
 from loguru import logger
